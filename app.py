@@ -1,7 +1,5 @@
 from flask import Flask, request, jsonify
-import subprocess
-import os
-import json
+import requests
 
 app = Flask(__name__)
 
@@ -11,20 +9,21 @@ def get_link():
     if not video_url:
         return jsonify({'error': 'No URL provided'}), 400
     
-    # 1. تحديث yt-dlp أولاً لضمان التعامل مع تحديثات يوتيوب
-    # 2. إضافة خيار --no-check-certificate لتجاوز مشاكل الاتصال
-    cmd = f"yt-dlp -U && yt-dlp -g --no-check-certificate {video_url}"
+    # استخراج معرف الفيديو من الرابط
+    video_id = video_url.split('v=')[-1].split('&')[0]
+    
+    # طلب البيانات من خادم Piped (خادم مجاني ومستقر مخصص لفك روابط يوتيوب)
+    api_url = f"https://pipedapi.kavin.rocks/streams/{video_id}"
     
     try:
-        # تنفيذ الأمر
-        result = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode().strip()
-        # لأن -g تعطي رابطاً مباشراً، سنأخذ أول رابط في النتائج
-        direct_url = result.split('\n')[0]
-        return jsonify({'url': direct_url})
-    except subprocess.CalledProcessError as e:
-        return jsonify({'error': f"Command failed: {e.output.decode()}"}), 500
+        response = requests.get(api_url)
+        data = response.json()
+        
+        # اختيار أفضل جودة فيديو متاحة
+        audio_url = data['audioStreams'][0]['url']
+        return jsonify({'url': audio_url, 'title': data['title']})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': "لا يمكن جلب الرابط، قد يكون الفيديو غير متاح عبر هذا الخادم."}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
+    app.run(host='0.0.0.0', port=5000)
